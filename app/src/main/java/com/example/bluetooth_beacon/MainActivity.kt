@@ -1,6 +1,7 @@
 package com.example.bluetooth_beacon
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothManager
@@ -16,6 +17,11 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
+import android.widget.BaseAdapter
+import android.widget.TextView
 import android.widget.Toast
 import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatActivity
@@ -29,6 +35,7 @@ class MainActivity : AppCompatActivity() {
     private var mScanResults: HashMap<String, ScanResult>? = null
     private var  mScanCallback: ScanCallback? = null
     private var mScanning = false
+    private var detectedDevices: ArrayList<ScanResult>? = ArrayList<ScanResult>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -56,9 +63,17 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun setAdapter(){
+        Log.d("DBG", "Device2 :  (${detectedDevices})")
+        if (!detectedDevices.isNullOrEmpty()){
+            val adaper = BluetoothDeviceListAdapter(this, detectedDevices)
+            bluetooth_listView.adapter = adaper
+            Log.d("DBG", "task done")
+        }
+    }
 
     companion object {
-        const val SCAN_PERIOD: Long = 5000
+        const val SCAN_PERIOD: Long = 10000
     }
 
     private fun startScan() {
@@ -71,18 +86,17 @@ class MainActivity : AppCompatActivity() {
             .build()
         val filter: List<ScanFilter>? = null
         // Stops scanning after a pre-defined scan period.
-        val mHandler = Handler(Looper.myLooper()!!)
+        val mHandler = Handler(Looper.getMainLooper())
         mHandler.postDelayed({mBluetoothLeScanner.stopScan(mScanCallback)}, SCAN_PERIOD)
         mScanning = true
         mBluetoothLeScanner!!.startScan(filter, settings, mScanCallback)
     }
 
-    private inner class BtleScanCallback : ScanCallback() {
-        @RequiresApi(Build.VERSION_CODES.O)
+    private inner class BtleScanCallback() : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult) {
             addScanResult(result)
         }
-        @RequiresApi(Build.VERSION_CODES.O)
+
         override fun onBatchScanResults(results: List<ScanResult>) {
             for (result in results) {
                 addScanResult(result)
@@ -91,12 +105,71 @@ class MainActivity : AppCompatActivity() {
         override fun onScanFailed(errorCode: Int) {
             Log.d("DBG", "BLE Scan Failed with code $errorCode")
         }
-        @RequiresApi(Build.VERSION_CODES.O)
+
         private fun addScanResult(result: ScanResult) {
             val device = result.device
             val deviceAddress = device.address
             mScanResults!![deviceAddress] = result
-            Log.d("DBG", "Device address: $deviceAddress (${result.isConnectable})")
+            Log.d("DBG", "Device address: $deviceAddress (${result})")
+            detectedDevices?.clear()
+            detectedDevices?.add(result)
+            setAdapter()
+
+        }
+    }
+
+    private inner class BluetoothDeviceListAdapter(context: Context, private val  detectedDevices: ArrayList<ScanResult>?):
+        BaseAdapter() {
+
+        private val inflater: LayoutInflater = context.getSystemService(Context.LAYOUT_INFLATER_SERVICE) as LayoutInflater
+
+        @RequiresApi(Build.VERSION_CODES.O)
+        @SuppressLint("ViewHolder")
+        override fun getView(p0: Int, p1: View?, p2: ViewGroup?): View {
+            // inflate the layout for each list row
+            val p1 = inflater.inflate(R.layout.bluetooth_device_list_item,p2, false)
+
+            // get current device to be displayed
+            val currentDevice = detectedDevices?.get(p0)
+
+
+            // get the TextViews for the device name, address and strength
+            val nameTextView = p1.findViewById<TextView>(R.id.name)
+            val addressTextView = p1.findViewById<TextView>(R.id.address)
+            val strengthTextView = p1.findViewById<TextView>(R.id.strength)
+
+
+            //sets the text for president name, startDuty, endDuty from the currentPresident object
+            if (currentDevice?.device?.name == null){
+                nameTextView.text = "N/A"
+            }else{
+                nameTextView.text = currentDevice?.device?.name.toString()
+            }
+            addressTextView.text = currentDevice?.device?.address.toString()
+            strengthTextView.text = currentDevice?.rssi.toString()
+            if (!currentDevice?.isConnectable!!){
+               isEnabled(p0)
+            }
+
+            return p1
+        }
+
+
+        override fun getItem(p0: Int): ScanResult? {
+            //returns list president at the specified position
+            return detectedDevices?.get(p0)
+        }
+
+        override fun getItemId(p0: Int): Long {
+            return p0.toLong()
+        }
+
+        override fun getCount(): Int {
+            //returns total number of presidents in the list
+            if (!detectedDevices.isNullOrEmpty()) {
+                return detectedDevices.size
+            }
+            return 0
         }
     }
 
