@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">BluetoothBeacon</string>
+    <string name="start_scanning">START SCANNING</string>
+</resources>
