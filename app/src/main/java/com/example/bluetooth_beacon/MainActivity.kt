@@ -4,6 +4,8 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothGatt
+import android.bluetooth.BluetoothGattCharacteristic
 import android.bluetooth.BluetoothManager
 import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanFilter
@@ -25,9 +27,10 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatActivity
+import com.example.handler.BleWrapper
 import kotlinx.android.synthetic.main.activity_main.*
 
-class MainActivity : AppCompatActivity() {
+class MainActivity : AppCompatActivity() , BleWrapper.BleCallback{
 
     private var mBluetoothAdapter: BluetoothAdapter? = null
     private val REQUEST_ENABLE_BT = 2
@@ -36,6 +39,7 @@ class MainActivity : AppCompatActivity() {
     private var  mScanCallback: ScanCallback? = null
     private var mScanning = false
     private var detectedDevices: ArrayList<ScanResult>? = ArrayList<ScanResult>()
+    private lateinit var  mBleWrapper: BleWrapper
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -59,7 +63,7 @@ class MainActivity : AppCompatActivity() {
     private fun handleBluetoothScan(){
         button.setOnClickListener {
             startScan()
-            Toast.makeText(applicationContext,"Scanning....", Toast.LENGTH_SHORT).show()
+            Toast.makeText(applicationContext, "Scanning....", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -87,7 +91,7 @@ class MainActivity : AppCompatActivity() {
         val filter: List<ScanFilter>? = null
         // Stops scanning after a pre-defined scan period.
         val mHandler = Handler(Looper.getMainLooper())
-        mHandler.postDelayed({mBluetoothLeScanner.stopScan(mScanCallback)}, SCAN_PERIOD)
+        mHandler.postDelayed({ mBluetoothLeScanner.stopScan(mScanCallback) }, SCAN_PERIOD)
         mScanning = true
         mBluetoothLeScanner!!.startScan(filter, settings, mScanCallback)
     }
@@ -110,6 +114,9 @@ class MainActivity : AppCompatActivity() {
             val device = result.device
             val deviceAddress = device.address
             mScanResults!![deviceAddress] = result
+            mBleWrapper = BleWrapper(this@MainActivity, deviceAddress.toString())
+            mBleWrapper.addListener(this@MainActivity)
+            mBleWrapper.connect(false)
             Log.d("DBG", "Device address: $deviceAddress (${result})")
             detectedDevices?.clear()
             detectedDevices?.add(result)
@@ -118,7 +125,10 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private inner class BluetoothDeviceListAdapter(context: Context, private val  detectedDevices: ArrayList<ScanResult>?):
+    private inner class BluetoothDeviceListAdapter(
+        context: Context,
+        private val detectedDevices: ArrayList<ScanResult>?
+    ):
         BaseAdapter() {
 
         private val inflater: LayoutInflater = context.getSystemService(Context.LAYOUT_INFLATER_SERVICE) as LayoutInflater
@@ -127,7 +137,7 @@ class MainActivity : AppCompatActivity() {
         @SuppressLint("ViewHolder")
         override fun getView(p0: Int, p1: View?, p2: ViewGroup?): View {
             // inflate the layout for each list row
-            val p1 = inflater.inflate(R.layout.bluetooth_device_list_item,p2, false)
+            val p1 = inflater.inflate(R.layout.bluetooth_device_list_item, p2, false)
 
             // get current device to be displayed
             val currentDevice = detectedDevices?.get(p0)
@@ -143,12 +153,12 @@ class MainActivity : AppCompatActivity() {
             if (currentDevice?.device?.name == null){
                 nameTextView.text = "N/A"
             }else{
-                nameTextView.text = currentDevice?.device?.name.toString()
+                nameTextView.text = currentDevice.device?.name.toString()
             }
             addressTextView.text = currentDevice?.device?.address.toString()
             strengthTextView.text = currentDevice?.rssi.toString()
             if (!currentDevice?.isConnectable!!){
-               isEnabled(p0)
+                isEnabled(p0)
             }
 
             return p1
@@ -177,7 +187,10 @@ class MainActivity : AppCompatActivity() {
         if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) !=
             PackageManager.PERMISSION_GRANTED) {
             Log.d("DBG", "No fine location access")
-            requestPermissions(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION), LOCATION_PERMISSION_CODE)
+            requestPermissions(
+                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION),
+                LOCATION_PERMISSION_CODE
+            )
         }else{
             handleBluetoothScan()
         }
@@ -187,7 +200,7 @@ class MainActivity : AppCompatActivity() {
         if (bluetoothAdapter == null){
             val txt = "No Bluetooth LE capability"
             Log.d("DBG", txt)
-            Toast.makeText(applicationContext,txt,Toast.LENGTH_SHORT).show()
+            Toast.makeText(applicationContext, txt, Toast.LENGTH_SHORT).show()
             return false
         }
         return true
@@ -199,29 +212,75 @@ class MainActivity : AppCompatActivity() {
             if (resultCode == Activity.RESULT_OK){
                 val msg = "Bluetooth is enabled"
                 Log.d("DBG", msg)
-                Toast.makeText(applicationContext,msg,Toast.LENGTH_LONG).show()
+                Toast.makeText(applicationContext, msg, Toast.LENGTH_LONG).show()
                 //check for access fine location permission
                 askForLocationPermission()
             }else if (resultCode == Activity.RESULT_CANCELED){
                 val msg = "Bluetooth is not enabled. Application needs this feature"
                 Log.d("DBG", msg)
-                Toast.makeText(applicationContext,msg,Toast.LENGTH_LONG).show()
+                Toast.makeText(applicationContext, msg, Toast.LENGTH_LONG).show()
             }
         }
     }
 
     override fun onRequestPermissionsResult(
-            requestCode: Int,
-            permissions: Array<out String>,
-            grantResults: IntArray
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
     ) {
         if (requestCode == LOCATION_PERMISSION_CODE){
             if (grantResults[0] == PackageManager.PERMISSION_GRANTED && grantResults.isNotEmpty()){
-                Toast.makeText(applicationContext,"Location permission granted!", Toast.LENGTH_SHORT).show()
+                Toast.makeText(
+                    applicationContext,
+                    "Location permission granted!",
+                    Toast.LENGTH_SHORT
+                ).show()
                 handleBluetoothScan()
             }else{
-                Toast.makeText(applicationContext,"Location permission denied!", Toast.LENGTH_SHORT).show()
+                Toast.makeText(
+                    applicationContext,
+                    "Location permission denied!",
+                    Toast.LENGTH_SHORT
+                ).show()
             }
         }
+    }
+
+    override fun onDeviceReady(gatt: BluetoothGatt) {
+        for (gattService in gatt.services) {
+            Log.d("DBG", "Service ${gattService.uuid}")
+            if (gattService.uuid == mBleWrapper.HEART_RATE_SERVICE_UUID) {
+                Log.d("DBG", "BINGO!!!")
+                /* setup the system for the notification messages */
+                mBleWrapper.getNotifications(
+                    gatt,
+                    mBleWrapper.HEART_RATE_SERVICE_UUID,
+                    mBleWrapper.HEART_RATE_MEASUREMENT_CHAR_UUID
+                )
+            }
+        }
+
+    }
+
+    override fun onDeviceDisconnected() {
+        Log.d("DBG", "Disconnected")
+    }
+
+    @SuppressLint("SetTextI18n")
+    override fun onNotify(characteristic: BluetoothGattCharacteristic) {
+        val flag = characteristic.properties
+        Log.i("DBG", "Heart rate flag: $flag")
+        val format: Int
+        if (flag and 0x01 != 0) {
+            format = BluetoothGattCharacteristic.FORMAT_UINT16
+            Log.d("DBG", "Heart rate format UINT16.")
+        } else {
+            format = BluetoothGattCharacteristic.FORMAT_UINT8
+            Log.d("DBG", "Heart rate format UINT8.")
+        }
+        val heartRate = characteristic.getIntValue(format,1)
+        Log.i("DBG", "Heart rate value: $heartRate")
+        mBleWrapper.removeListener(this)
+        heart_rate_tv.text = "$heartRate BPM"
     }
 }
