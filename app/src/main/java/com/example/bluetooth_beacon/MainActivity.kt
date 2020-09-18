@@ -1,8 +1,9 @@
 package com.example.bluetooth_beacon
 
-import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.app.AlertDialog
+import android.app.Dialog
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothGatt
 import android.bluetooth.BluetoothGattCharacteristic
@@ -13,11 +14,12 @@ import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
+import android.location.LocationManager
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.provider.Settings
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
@@ -27,6 +29,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatActivity
+import androidx.fragment.app.DialogFragment
 import com.example.handler.BleWrapper
 import kotlinx.android.synthetic.main.activity_main.*
 
@@ -34,7 +37,6 @@ class MainActivity : AppCompatActivity() , BleWrapper.BleCallback{
 
     private var mBluetoothAdapter: BluetoothAdapter? = null
     private val REQUEST_ENABLE_BT = 2
-    private val LOCATION_PERMISSION_CODE = 1
     private var mScanResults: HashMap<String, ScanResult>? = null
     private var  mScanCallback: ScanCallback? = null
     private var mScanning = false
@@ -55,7 +57,7 @@ class MainActivity : AppCompatActivity() , BleWrapper.BleCallback{
                 startActivityForResult(enableBtIntent, REQUEST_ENABLE_BT)
             }else{
                 //check for access fine location permission and start scanning
-                askForLocationPermission()
+                handleLocation()
             }
         }
     }
@@ -63,7 +65,6 @@ class MainActivity : AppCompatActivity() , BleWrapper.BleCallback{
     private fun handleBluetoothScan(){
         button.setOnClickListener {
             startScan()
-            Toast.makeText(applicationContext, "Scanning....", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -93,6 +94,7 @@ class MainActivity : AppCompatActivity() , BleWrapper.BleCallback{
         val mHandler = Handler(Looper.getMainLooper())
         mHandler.postDelayed({ mBluetoothLeScanner.stopScan(mScanCallback) }, SCAN_PERIOD)
         mScanning = true
+        Toast.makeText(applicationContext, "Scanning....", Toast.LENGTH_SHORT).show()
         mBluetoothLeScanner!!.startScan(filter, settings, mScanCallback)
     }
 
@@ -183,16 +185,33 @@ class MainActivity : AppCompatActivity() , BleWrapper.BleCallback{
         }
     }
 
-    private fun askForLocationPermission(){
-        if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) !=
-            PackageManager.PERMISSION_GRANTED) {
-            Log.d("DBG", "No fine location access")
-            requestPermissions(
-                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION),
-                LOCATION_PERMISSION_CODE
-            )
-        }else{
-            handleBluetoothScan()
+    private fun handleLocation(){
+        val lm = getSystemService(LOCATION_SERVICE) as LocationManager
+        val gpsEnabled = lm.isProviderEnabled(LocationManager.GPS_PROVIDER)
+        val networkEnabled = lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
+        if(!gpsEnabled && !networkEnabled) {
+            LocationDialogFragment().show(supportFragmentManager,"TAG")
+        }
+        handleBluetoothScan()
+    }
+
+    class LocationDialogFragment(): DialogFragment(){
+
+        override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
+            return activity?.let {
+                //  dialog construction
+                val builder = AlertDialog.Builder(it)
+                builder.setMessage(R.string.alert_message)
+                    .setPositiveButton("OK") { _, _ ->
+                        // request location action
+                        val intent = Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)
+                        startActivity(intent)
+                    }
+                    .setNegativeButton("CANCEL") { _, _ ->
+                        Toast.makeText(context, getText(R.string.alert_message), Toast.LENGTH_SHORT).show()
+                    }
+                builder.create()
+            } ?: throw IllegalStateException("Activity cannot be null")
         }
     }
 
@@ -213,8 +232,8 @@ class MainActivity : AppCompatActivity() , BleWrapper.BleCallback{
                 val msg = "Bluetooth is enabled"
                 Log.d("DBG", msg)
                 Toast.makeText(applicationContext, msg, Toast.LENGTH_LONG).show()
-                //check for access fine location permission
-                askForLocationPermission()
+                //location permission
+                handleLocation()
             }else if (resultCode == Activity.RESULT_CANCELED){
                 val msg = "Bluetooth is not enabled. Application needs this feature"
                 Log.d("DBG", msg)
@@ -223,28 +242,7 @@ class MainActivity : AppCompatActivity() , BleWrapper.BleCallback{
         }
     }
 
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<out String>,
-        grantResults: IntArray
-    ) {
-        if (requestCode == LOCATION_PERMISSION_CODE){
-            if (grantResults[0] == PackageManager.PERMISSION_GRANTED && grantResults.isNotEmpty()){
-                Toast.makeText(
-                    applicationContext,
-                    "Location permission granted!",
-                    Toast.LENGTH_SHORT
-                ).show()
-                handleBluetoothScan()
-            }else{
-                Toast.makeText(
-                    applicationContext,
-                    "Location permission denied!",
-                    Toast.LENGTH_SHORT
-                ).show()
-            }
-        }
-    }
+
 
     override fun onDeviceReady(gatt: BluetoothGatt) {
         for (gattService in gatt.services) {
@@ -278,7 +276,7 @@ class MainActivity : AppCompatActivity() , BleWrapper.BleCallback{
             format = BluetoothGattCharacteristic.FORMAT_UINT8
             Log.d("DBG", "Heart rate format UINT8.")
         }
-        val heartRate = characteristic.getIntValue(format,1)
+        val heartRate = characteristic.getIntValue(format, 1)
         Log.i("DBG", "Heart rate value: $heartRate")
         mBleWrapper.removeListener(this)
         heart_rate_tv.text = "$heartRate BPM"

@@ -1,4 +1,5 @@
 <resources>
     <string name="app_name">BluetoothBeacon</string>
     <string name="start_scanning">START SCANNING</string>
+    <string name="alert_message">This application requires locations to be turned on</string>
 </resources>
