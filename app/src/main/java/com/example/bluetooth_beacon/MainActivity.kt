@@ -25,12 +25,12 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.BaseAdapter
+import android.widget.ListAdapter
 import android.widget.TextView
 import android.widget.Toast
 import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatActivity
 import androidx.fragment.app.DialogFragment
-import com.example.handler.BleWrapper
 import kotlinx.android.synthetic.main.activity_main.*
 
 class MainActivity : AppCompatActivity() , BleWrapper.BleCallback{
@@ -42,6 +42,8 @@ class MainActivity : AppCompatActivity() , BleWrapper.BleCallback{
     private var mScanning = false
     private var detectedDevices: ArrayList<ScanResult>? = ArrayList<ScanResult>()
     private lateinit var  mBleWrapper: BleWrapper
+    private lateinit var adpater: ListAdapter
+    private var intArray = ArrayList<Int>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -70,11 +72,9 @@ class MainActivity : AppCompatActivity() , BleWrapper.BleCallback{
 
     private fun setAdapter(){
         Log.d("DBG", "Device2 :  (${detectedDevices})")
-        if (!detectedDevices.isNullOrEmpty()){
-            val adaper = BluetoothDeviceListAdapter(this, detectedDevices)
-            bluetooth_listView.adapter = adaper
-            Log.d("DBG", "task done")
-        }
+        adpater = BluetoothDeviceListAdapter(this, detectedDevices)
+        bluetooth_listView.adapter = adpater
+        Log.d("DBG", "Adapter set")
     }
 
     companion object {
@@ -120,10 +120,9 @@ class MainActivity : AppCompatActivity() , BleWrapper.BleCallback{
             mBleWrapper.addListener(this@MainActivity)
             mBleWrapper.connect(false)
             Log.d("DBG", "Device address: $deviceAddress (${result})")
+            setAdapter()
             detectedDevices?.clear()
             detectedDevices?.add(result)
-            setAdapter()
-
         }
     }
 
@@ -151,7 +150,6 @@ class MainActivity : AppCompatActivity() , BleWrapper.BleCallback{
             val strengthTextView = p1.findViewById<TextView>(R.id.strength)
 
 
-            //sets the text for president name, startDuty, endDuty from the currentPresident object
             if (currentDevice?.device?.name == null){
                 nameTextView.text = "N/A"
             }else{
@@ -278,7 +276,19 @@ class MainActivity : AppCompatActivity() , BleWrapper.BleCallback{
         }
         val heartRate = characteristic.getIntValue(format, 1)
         Log.i("DBG", "Heart rate value: $heartRate")
-        mBleWrapper.removeListener(this)
+        if (!(intArray.contains(heartRate.toInt()))){
+            intArray.add(heartRate.toInt())
+        }
         heart_rate_tv.text = "$heartRate BPM"
+
+        Log.d("DBG", "array value = $intArray")
+        // set up intent for graphing
+        heart_rate_tv.setOnClickListener {
+            val intent = Intent(this, Activity2::class.java)
+            intent.putIntegerArrayListExtra("DATA", intArray)
+            startActivity(intent)
+
+        }
+        //mBleWrapper.removeListener(this)
     }
 }

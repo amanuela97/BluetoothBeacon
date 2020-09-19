@@ -1,4 +1,4 @@
-package com.example.handler
+package com.example.bluetooth_beacon
 
 /*
  * BLE Wrapper -- Bluetooth LE message based implementation
@@ -92,9 +92,11 @@ class BleWrapper(private val context: Context, deviceAddress: String) : Handler.
     }
 
     fun writeCharacteristic(gatt: BluetoothGatt, service: UUID, characteristic: UUID, data: ByteArray) {
-        bleHandler.obtainMessage(MSG_WRITE_CHARACTERISTIC, CharacteristicData(
+        bleHandler.obtainMessage(
+            MSG_WRITE_CHARACTERISTIC, CharacteristicData(
                                                             ServiceCharacteristic(gatt, service, characteristic),
-                                                            data)).sendToTarget()
+                                                            data)
+        ).sendToTarget()
     }
     /**************************************/
 
